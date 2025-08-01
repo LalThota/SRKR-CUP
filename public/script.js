@@ -1,4 +1,3 @@
-
 // Global variables
 let currentUser = null
 let isAdmin = false
@@ -12,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function initializeApp() {
     console.log("Initializing app...")
-    
+
     // Initialize sample users if not exists
     if (!localStorage.getItem("users")) {
         console.log("Creating sample users...")
@@ -20,6 +19,7 @@ function initializeApp() {
             {
                 id: 1,
                 name: "John Doe",
+                regdNo: "22B91A24",
                 email: "john@example.com",
                 phone: "1234567890",
                 password: "password123",
@@ -28,6 +28,7 @@ function initializeApp() {
             {
                 id: 2,
                 name: "Jane Smith",
+                regdNo: "24B91A2S2",
                 email: "jane@example.com",
                 phone: "0987654321",
                 password: "password123",
@@ -42,8 +43,8 @@ function initializeApp() {
     if (!localStorage.getItem("admin")) {
         console.log("Creating admin user...")
         const admin = {
-            email: "admin@college.edu",
-            password: "admin123",
+            email: "srkrcup@gmail.com",
+            password: "Srkr@cup",
         }
         localStorage.setItem("admin", JSON.stringify(admin))
         console.log("Admin user created:", admin)
@@ -77,12 +78,59 @@ function initializeApp() {
         isAdmin = savedIsAdmin === "true"
         console.log("User already logged in:", { currentUser, isAdmin })
         showDashboard()
+    } else {
+        // Ensure main content is visible if no one is logged in
+        showMainContent();
     }
 }
 
 function setupEventListeners() {
     // Navigation
     document.getElementById("hamburger").addEventListener("click", toggleMobileMenu)
+    
+    // Add event listeners to login buttons
+    const loginButtons = document.querySelectorAll('button[onclick="showLogin()"]');
+    console.log('Found login buttons:', loginButtons.length);
+    loginButtons.forEach((button, index) => {
+        console.log(`Adding click event to login button ${index}`);
+        button.addEventListener('click', function(e) {
+            console.log(`Login button ${index} clicked`, e);
+            // The onclick attribute will handle the actual showLogin call
+        });
+    });
+    
+    // Forgot Password Form
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+    if (forgotPasswordForm) {
+        forgotPasswordForm.addEventListener('submit', handleForgotPassword);
+    }
+    
+    // Password Reset Form
+    const passwordResetForm = document.getElementById('passwordResetForm');
+    if (passwordResetForm) {
+        passwordResetForm.addEventListener('submit', handlePasswordReset);
+    }
+    
+    // Resend Reset OTP Link
+    const resendResetOtpLink = document.getElementById('resendResetOtpLink');
+    if (resendResetOtpLink) {
+        resendResetOtpLink.addEventListener('click', handleResendResetOTP);
+    }
+
+    // Dashboard sidebar toggles for mobile
+    const userSidebarToggle = document.getElementById("user-sidebar-toggle");
+    if (userSidebarToggle) {
+        userSidebarToggle.addEventListener("click", () => {
+            document.getElementById("user-sidebar").classList.toggle("active");
+        });
+    }
+
+    const adminSidebarToggle = document.getElementById("admin-sidebar-toggle");
+    if (adminSidebarToggle) {
+        adminSidebarToggle.addEventListener("click", () => {
+            document.getElementById("admin-sidebar").classList.toggle("active");
+        });
+    }
 
     // Forms
     document.getElementById("loginForm").addEventListener("submit", handleLogin)
@@ -90,6 +138,9 @@ function setupEventListeners() {
     document.getElementById("postLostItemForm").addEventListener("submit", handlePostLostItem)
     document.getElementById("postSaleItemForm").addEventListener("submit", handlePostSaleItem)
     document.getElementById("uploadNotesForm").addEventListener("submit", handleUploadNotes)
+    
+    // Set up OTP verification form listeners
+    setupOTPVerificationListeners()
 
     // Contact form
     const contactForm = document.getElementById("contactForm")
@@ -151,22 +202,172 @@ function toggleMobileMenu() {
 }
 
 function showLogin() {
-    document.getElementById("loginModal").style.display = "block"
-    closeModal("signupModal")
+    console.log("showLogin function called");
+    const loginModal = document.getElementById("loginModal");
+    if (loginModal) {
+        loginModal.style.display = "block";
+        console.log("Login modal displayed");
+    } else {
+        console.error("Login modal element not found");
+    }
+    closeModal("signupModal");
 }
 
 function showSignup() {
     document.getElementById("signupModal").style.display = "block"
     closeModal("loginModal")
+    closeModal("forgotPasswordModal")
+    closeModal("passwordResetModal")
+}
+
+function showForgotPassword() {
+    document.getElementById("forgotPasswordModal").style.display = "block"
+    closeModal("loginModal")
+}
+
+function showPasswordReset(email) {
+    document.getElementById("passwordResetModal").style.display = "block"
+    document.getElementById("resetEmail").value = email
+    closeModal("forgotPasswordModal")
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).style.display = "none"
+    console.log(`closeModal function called for ${modalId}`);
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        // Add fade-out animation
+        const modalContainer = modal.querySelector('.modal-container');
+        if (modalContainer) {
+            modalContainer.classList.add('fade-out');
+            
+            // Wait for animation to complete before hiding
+            setTimeout(() => {
+                modal.style.display = "none";
+                // Remove the animation class for next time
+                modalContainer.classList.remove('fade-out');
+            }, 300);
+        } else {
+            modal.style.display = "none";
+        }
+        
+        // Clear OTP timer if it exists
+        if (modalId === 'otpVerificationModal' && window.otpTimerInterval) {
+            clearInterval(window.otpTimerInterval);
+            window.otpTimerInterval = null;
+        }
+        
+        console.log(`Modal ${modalId} closed`);
+    } else {
+        console.error(`Modal element ${modalId} not found`);
+    }
+}
+
+function showOTPVerificationModal(email) {
+    console.log("Showing OTP verification modal for email:", email);
+    document.getElementById("otpVerificationModal").style.display = "block";
+    
+    // Store the email for resend functionality
+    const emailInput = document.createElement("input");
+    emailInput.type = "hidden";
+    emailInput.id = "userEmail";
+    emailInput.value = email;
+    document.getElementById("otpVerificationForm").appendChild(emailInput);
+}
+
+async function handleOTPVerification(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById("userEmail").value;
+    const otp = document.getElementById("otpInput").value;
+    
+    if (!otp) {
+        alert("Please enter the verification code");
+        return;
+    }
+    
+    // Add loading state to the button
+    const verifyButton = e.submitter;
+    const originalText = verifyButton.querySelector("span").textContent;
+    verifyButton.disabled = true;
+    verifyButton.querySelector("span").textContent = "Verifying...";
+    
+    try {
+        // Send OTP verification request to the server
+        const response = await fetch('/api/auth/verify-otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email,
+                otp
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Verification failed');
+        }
+        
+        alert("Email verified successfully! You can now login.");
+        closeModal("otpVerificationModal");
+        showLogin();
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Remove loading state
+        verifyButton.disabled = false;
+        verifyButton.querySelector("span").textContent = originalText;
+    }
+}
+
+async function handleResendOTP(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById("userEmail").value;
+    
+    if (!email) {
+        alert("Email address is missing. Please try again.");
+        return;
+    }
+    
+    const resendLink = document.getElementById("resendOtpLink");
+    const originalText = resendLink.textContent;
+    resendLink.textContent = "Sending...";
+    resendLink.style.pointerEvents = "none";
+    
+    try {
+        // Send resend OTP request to the server
+        const response = await fetch('/api/auth/resend-otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to resend verification code');
+        }
+        
+        alert("A new verification code has been sent to your email.");
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Reset the link
+        resendLink.textContent = originalText;
+        resendLink.style.pointerEvents = "auto";
+    }
 }
 
 // Authentication functions
-function handleLogin(e) {
-    e.preventDefault()
+async function handleLogin(e) {
+    console.log("handleLogin triggered", e);
+    e.preventDefault();
+    console.log("Login form submitted");
 
     const email = document.getElementById("loginEmail").value.trim()
     const password = document.getElementById("loginPassword").value.trim()
@@ -179,84 +380,149 @@ function handleLogin(e) {
         return
     }
 
-    if (adminLogin) {
-        const admin = JSON.parse(localStorage.getItem("admin"))
-        console.log("Admin credentials:", admin)
-        if (email === admin.email && password === admin.password) {
-            isAdmin = true
-            currentUser = { name: "Admin", email: admin.email }
-            localStorage.setItem("currentUser", JSON.stringify(currentUser))
-            localStorage.setItem("isAdmin", "true")
-            console.log("Admin login successful, showing dashboard")
-            try {
-                showDashboard()
-                closeModal("loginModal")
-                addNotification("Admin logged in", "system")
-            } catch (error) {
-                console.error("Error showing dashboard:", error)
-                alert("Error loading dashboard. Please try again.")
+    // Add loading state to the button
+    const loginButton = e.submitter;
+    const originalText = loginButton.querySelector("span").textContent;
+    loginButton.disabled = true;
+    loginButton.querySelector("span").textContent = "Signing In...";
+
+    try {
+        if (adminLogin) {
+            // Admin login - use localStorage for demo purposes
+            const admin = JSON.parse(localStorage.getItem("admin"))
+            console.log("Admin credentials:", admin)
+            if (email === admin.email && password === admin.password) {
+                isAdmin = true
+                currentUser = { name: "Admin", email: admin.email }
+                localStorage.setItem("currentUser", JSON.stringify(currentUser))
+                localStorage.setItem("isAdmin", "true")
+                console.log("Admin login successful, showing dashboard")
+                try {
+                    showDashboard()
+                    closeModal("loginModal")
+                    addNotification("Admin logged in", "system")
+                } catch (error) {
+                    console.error("Error showing dashboard:", error)
+                    alert("Error loading dashboard. Please try again.")
+                }
+            } else {
+                alert("Invalid admin credentials. Please contact system administrator.")
             }
         } else {
-            alert("Invalid admin credentials. Please use:\nEmail: admin@college.edu\nPassword: admin123")
-        }
-    } else {
-        const users = JSON.parse(localStorage.getItem("users"))
-        const user = users.find((u) => u.email === email && u.password === password)
+            // User login - use API
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email,
+                    password
+                })
+            });
 
-        console.log("User login attempt:", { email, foundUser: !!user })
+            const data = await response.json();
 
-        if (user) {
-            isAdmin = false
-            currentUser = user
-            localStorage.setItem("currentUser", JSON.stringify(currentUser))
-            localStorage.setItem("isAdmin", "false")
-            console.log("User login successful, showing dashboard")
-            try {
-                showDashboard()
-                closeModal("loginModal")
-                addNotification(`${user.name} logged in`, "system")
-            } catch (error) {
-                console.error("Error showing dashboard:", error)
-                alert("Error loading dashboard. Please try again.")
+            if (!response.ok) {
+                if (data.message === "Email not verified") {
+                    alert("Your email is not verified. Please check your inbox for the verification OTP.");
+                    // Show OTP verification modal with the email
+                    showOTPVerificationModal(email);
+                } else {
+                    throw new Error(data.message || 'Login failed');
+                }
+                return;
             }
-        } else {
-            alert("Invalid credentials. Please use:\nEmail: john@example.com\nPassword: password123")
+
+            // Login successful
+            isAdmin = data.user.role === 'admin';
+            currentUser = data.user;
+            localStorage.setItem("currentUser", JSON.stringify(currentUser));
+            localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
+            localStorage.setItem("token", data.token);
+
+            console.log("User login successful, showing dashboard");
+            try {
+                showDashboard();
+                closeModal("loginModal");
+                addNotification(`${currentUser.name} logged in`, "system");
+            } catch (error) {
+                console.error("Error showing dashboard:", error);
+                alert("Error loading dashboard. Please try again.");
+            }
         }
+    } catch (error) {
+        alert(error.message || "Login failed. Please try again.");
+    } finally {
+        // Remove loading state
+        loginButton.disabled = false;
+        loginButton.querySelector("span").textContent = originalText;
     }
 }
 
-function handleSignup(e) {
-    e.preventDefault()
 
-    const name = document.getElementById("signupName").value
-    const email = document.getElementById("signupEmail").value
-    const password = document.getElementById("signupPassword").value
-    const phone = document.getElementById("signupPhone").value
+async function handleSignup(e) {
+    e.preventDefault();
 
-    const users = JSON.parse(localStorage.getItem("users"))
+    const name = document.getElementById("signupName").value;
+    const regdNo = document.getElementById("signupRegdNo").value; // Get Regd No.
+    const email = document.getElementById("signupEmail").value;
+    const password = document.getElementById("signupPassword").value;
+    const phone = document.getElementById("signupPhone").value;
 
-    // Check if user already exists
-    if (users.find((u) => u.email === email)) {
-        alert("User already exists with this email")
-        return
+    // Validate registration number format (22B91..., 23B91..., 24B91..., or 25B91...)
+    const regdNoPattern = /^(22|23|24|25)B91[A-Za-z0-9]+$/;
+    if (!regdNoPattern.test(regdNo)) {
+        alert("Invalid registration number format. Please use format like 22B91..., 23B91..., 24B91..., or 25B91...")
+        return;
     }
 
-    const newUser = {
-        id: Date.now(),
-        name,
-        email,
-        password,
-        phone,
-        joinDate: new Date().toISOString(),
+    // Validate password strength
+    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordPattern.test(password)) {
+        alert("Password must contain at least 8 characters with one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)");
+        return;
     }
 
-    users.push(newUser)
-    localStorage.setItem("users", JSON.stringify(users))
+    // Add loading state to the button
+    const signupButton = e.submitter;
+    const originalText = signupButton.querySelector("span").textContent;
+    signupButton.disabled = true;
+    signupButton.querySelector("span").textContent = "Creating Account...";
 
-    addNotification(`New user registered: ${name}`, "user")
-    alert("Account created successfully! Please login.")
-    closeModal("signupModal")
-    showLogin()
+    try {
+        // Send signup request to the server
+        const response = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name,
+                regdNo,
+                email,
+                password,
+                phone
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Signup failed');
+        }
+
+        // Show OTP verification modal
+        showOTPVerificationModal(email);
+        closeModal("signupModal");
+        alert("Account created! Please verify your email with the OTP sent to your inbox.");
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Remove loading state
+        signupButton.disabled = false;
+        signupButton.querySelector("span").textContent = originalText;
+    }
 }
 
 function logout() {
@@ -269,55 +535,565 @@ function logout() {
     localStorage.removeItem("isAdmin")
 
     // Hide dashboards and show home
-    const userDashboard = document.getElementById("userDashboard")
-    const adminDashboard = document.getElementById("adminDashboard")
-    const navbar = document.querySelector(".navbar")
-    const hero = document.querySelector(".hero")
-    const features = document.querySelector(".features")
-    const about = document.querySelector(".about")
-    const contact = document.querySelector(".contact")
+    showMainContent();
+    // Close any open sidebars on logout
+    document.getElementById("user-sidebar").classList.remove("active");
+    document.getElementById("admin-sidebar").classList.remove("active");
+}
 
-    if (userDashboard) userDashboard.style.display = "none"
-    if (adminDashboard) adminDashboard.style.display = "none"
-    if (navbar) navbar.style.display = "block"
-    if (hero) hero.style.display = "block"
-    if (features) features.style.display = "block"
-    if (about) about.style.display = "block"
-    if (contact) contact.style.display = "block"
+// Helper function to set up OTP verification form listeners
+function setupOTPVerificationListeners() {
+    // Add event listener to OTP verification form
+    const otpForm = document.getElementById("otpVerificationForm");
+    if (otpForm) {
+        // Remove existing event listeners to prevent duplicates
+        const newOtpForm = otpForm.cloneNode(true);
+        otpForm.parentNode.replaceChild(newOtpForm, otpForm);
+        newOtpForm.addEventListener("submit", handleOTPVerification);
+    }
+    
+    // Add event listener to resend OTP link
+    const resendOtpLink = document.getElementById("resendOtpLink");
+    if (resendOtpLink) {
+        // Remove existing event listeners to prevent duplicates
+        const newResendOtpLink = resendOtpLink.cloneNode(true);
+        resendOtpLink.parentNode.replaceChild(newResendOtpLink, resendOtpLink);
+        newResendOtpLink.addEventListener("click", handleResendOTP);
+    }
+}
+
+// OTP Verification Functions
+function showOTPVerificationModal(email) {
+    // Create modal if it doesn't exist
+    let otpModal = document.getElementById("otpVerificationModal");
+    if (!otpModal) {
+        otpModal = document.createElement("div");
+        otpModal.id = "otpVerificationModal";
+        otpModal.className = "modal";
+        otpModal.innerHTML = `
+            <div class="modal-overlay" onclick="closeModal('otpVerificationModal')"></div>
+            <div class="modal-container fade-in">
+                <div class="modal-header">
+                    <h2 class="pulse-animation">Verify Your Email</h2>
+                    <p>We've sent a verification code to your email</p>
+                    <button class="modal-close" onclick="closeModal('otpVerificationModal')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <form id="otpVerificationForm" class="modal-form">
+                    <input type="hidden" id="otpEmail">
+                    <div class="form-group">
+                        <label for="otpCode">Enter Verification Code</label>
+                        <div class="otp-input-container">
+                            <input type="text" class="otp-input" maxlength="1" autofocus>
+                            <input type="text" class="otp-input" maxlength="1">
+                            <input type="text" class="otp-input" maxlength="1">
+                            <input type="text" class="otp-input" maxlength="1">
+                            <input type="text" class="otp-input" maxlength="1">
+                            <input type="text" class="otp-input" maxlength="1">
+                            <input type="hidden" id="otpCode">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="timer-container">
+                            <p class="form-hint">Code expires in <span id="otpTimer" class="countdown-timer">05:00</span></p>
+                        </div>
+                        <p class="form-hint">Didn't receive the code? <a href="#" id="resendOtpLink" class="resend-link">Resend</a></p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-full btn-animated">
+                        <span>Verify Email</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </form>
+
+                <div class="modal-footer">
+                    <p>Already verified? <a href="#" onclick="showLogin()">Sign in</a></p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(otpModal);
+        
+        // Set up OTP input fields
+        setupOTPInputFields();
+        
+        // Start countdown timer
+        startOTPCountdownTimer();
+    }
+
+    // Set email in hidden field
+    document.getElementById("otpEmail").value = email;
+
+    // Show the modal
+    otpModal.style.display = "block";
+    
+    // Set up event listeners for the OTP form
+    setupOTPVerificationListeners();
+}
+
+// Set up OTP input fields for better UX
+function setupOTPInputFields() {
+    const otpInputs = document.querySelectorAll('.otp-input');
+    const otpCodeField = document.getElementById('otpCode');
+    
+    // Auto-focus next input field after entering a digit
+    otpInputs.forEach((input, index) => {
+        input.addEventListener('keyup', (e) => {
+            // Move to next input if current field is filled
+            if (e.key >= '0' && e.key <= '9') {
+                input.value = e.key;
+                if (index < otpInputs.length - 1) {
+                    otpInputs[index + 1].focus();
+                }
+                updateOTPValue();
+            }
+            
+            // Handle backspace
+            if (e.key === 'Backspace') {
+                input.value = '';
+                if (index > 0) {
+                    otpInputs[index - 1].focus();
+                }
+                updateOTPValue();
+            }
+        });
+        
+        // Handle paste event for the entire OTP
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasteData = e.clipboardData.getData('text');
+            if (/^\d+$/.test(pasteData)) {
+                // Fill all inputs with pasted digits
+                for (let i = 0; i < Math.min(pasteData.length, otpInputs.length); i++) {
+                    otpInputs[i].value = pasteData[i];
+                }
+                updateOTPValue();
+                // Focus the next empty input or the last one
+                const lastFilledIndex = Math.min(pasteData.length, otpInputs.length) - 1;
+                otpInputs[lastFilledIndex].focus();
+            }
+        });
+    });
+    
+    // Function to update the hidden OTP field with combined values
+    function updateOTPValue() {
+        let otpValue = '';
+        otpInputs.forEach(input => {
+            otpValue += input.value;
+        });
+        otpCodeField.value = otpValue;
+    }
+}
+
+// Start countdown timer for OTP expiration
+function startOTPCountdownTimer() {
+    const timerElement = document.getElementById('otpTimer');
+    let timeLeft = 5 * 60; // 5 minutes in seconds
+    
+    const countdownInterval = setInterval(() => {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        
+        // Format time as MM:SS
+        timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        // Add warning class when less than 1 minute left
+        if (timeLeft <= 60) {
+            timerElement.classList.add('timer-warning');
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+            timerElement.textContent = '00:00';
+            timerElement.classList.add('timer-expired');
+            
+            // Enable resend link when timer expires
+            const resendLink = document.getElementById('resendOtpLink');
+            resendLink.classList.add('active');
+        }
+        
+        timeLeft--;
+    }, 1000);
+    
+    // Store interval ID to clear it when modal is closed
+    window.otpTimerInterval = countdownInterval;
+}
+
+async function handleOTPVerification(e) {
+    e.preventDefault();
+
+    const email = document.getElementById("otpEmail").value;
+    const otp = document.getElementById("otpCode").value;
+    const otpForm = document.getElementById("otpVerificationForm");
+
+    // Validate OTP format
+    if (!email || !otp || otp.length !== 6 || !/^\d+$/.test(otp)) {
+        // Add shake animation to the form
+        otpForm.classList.add('shake-animation');
+        
+        // Create and show error message
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'verification-error';
+        errorMessage.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please enter a valid 6-digit verification code';
+        
+        // Remove any existing error messages
+        const existingError = otpForm.querySelector('.verification-error');
+        if (existingError) {
+            existingError.remove();
+        }
+        
+        otpForm.appendChild(errorMessage);
+        
+        // Remove the animation class after it completes
+        setTimeout(() => {
+            otpForm.classList.remove('shake-animation');
+            // Remove error message after a delay
+            setTimeout(() => {
+                if (errorMessage.parentNode) {
+                    errorMessage.parentNode.removeChild(errorMessage);
+                }
+            }, 3000);
+        }, 500);
+        
+        return;
+    }
+
+    // Add loading state to the button
+    const verifyButton = e.submitter;
+    addLoadingState(verifyButton);
+
+    try {
+        // Send OTP verification request to the server
+        const response = await fetch('/api/auth/verify-otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email,
+                otp
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Verification failed');
+        }
+
+        // Show success animation and message
+        const modalContainer = document.querySelector('#otpVerificationModal .modal-container');
+        modalContainer.classList.add('bounce-animation');
+        
+        // Create and show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'verification-success';
+        successMessage.innerHTML = '<i class="fas fa-check-circle"></i> Verification successful!';
+        
+        // Remove any existing messages
+        const existingMessage = otpForm.querySelector('.verification-error, .verification-success');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+        
+        otpForm.appendChild(successMessage);
+
+        // Check if direct login is enabled
+        if (data.directLogin && data.token && data.user) {
+            // Store user data and token
+            currentUser = data.user;
+            isAdmin = data.user.role === 'admin';
+            localStorage.setItem("currentUser", JSON.stringify(currentUser));
+            localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
+            localStorage.setItem("token", data.token);
+
+            // Wait for animation to complete before redirecting
+            setTimeout(() => {
+                // Close the modal and show dashboard
+                closeModal("otpVerificationModal");
+                showDashboard();
+                addNotification(`${currentUser.name} verified and logged in`, "system");
+            }, 1500);
+        } else {
+            // Fallback to the old behavior
+            setTimeout(() => {
+                closeModal("otpVerificationModal");
+                showLogin();
+            }, 1500);
+        }
+    } catch (error) {
+        // Add shake animation to the form
+        otpForm.classList.add('shake-animation');
+        
+        // Create and show error message
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'verification-error';
+        errorMessage.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${error.message}`;
+        
+        // Remove any existing error messages
+        const existingError = otpForm.querySelector('.verification-error');
+        if (existingError) {
+            existingError.remove();
+        }
+        
+        otpForm.appendChild(errorMessage);
+        
+        // Remove the animation class after it completes
+        setTimeout(() => {
+            otpForm.classList.remove('shake-animation');
+            // Remove error message after a delay
+            setTimeout(() => {
+                if (errorMessage.parentNode) {
+                    errorMessage.parentNode.removeChild(errorMessage);
+                }
+            }, 3000);
+        }, 500);
+    } finally {
+        removeLoadingState(verifyButton, "Verify Email");
+    }
+}
+
+async function handleResendOTP(e) {
+    e.preventDefault();
+
+    const email = document.getElementById("otpEmail").value;
+
+    if (!email) {
+        alert("Email address is missing. Please try again.");
+        return;
+    }
+
+    // Add loading state to the resend link
+    const resendLink = document.getElementById("resendOtpLink");
+    addLoadingState(resendLink);
+
+    try {
+        // Send resend OTP request to the server
+        const response = await fetch('/api/auth/resend-otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to resend verification code');
+        }
+
+        alert("A new verification code has been sent to your email.");
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        removeLoadingState(resendLink, "Resend");
+    }
+}
+
+async function handleForgotPassword(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById("forgotEmail").value;
+    
+    if (!email) {
+        alert("Please enter your email address");
+        return;
+    }
+    
+    // Add loading state to the button
+    const submitButton = e.submitter;
+    const originalText = submitButton.querySelector("span").textContent;
+    submitButton.disabled = true;
+    submitButton.querySelector("span").textContent = "Sending...";
+    
+    try {
+        // Send forgot password request to the server
+        const response = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to send reset code');
+        }
+        
+        alert("A password reset code has been sent to your email.");
+        showPasswordReset(email);
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Remove loading state
+        submitButton.disabled = false;
+        submitButton.querySelector("span").textContent = originalText;
+    }
+}
+
+async function handlePasswordReset(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById("resetEmail").value;
+    const otp = document.getElementById("resetOTP").value;
+    const newPassword = document.getElementById("newPassword").value;
+    const confirmPassword = document.getElementById("confirmPassword").value;
+    
+    if (!email || !otp || !newPassword || !confirmPassword) {
+        alert("Please fill in all fields");
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        alert("Passwords do not match");
+        return;
+    }
+    
+    // Add loading state to the button
+    const resetButton = e.submitter;
+    const originalText = resetButton.querySelector("span").textContent;
+    resetButton.disabled = true;
+    resetButton.querySelector("span").textContent = "Resetting...";
+    
+    try {
+        // Send reset password request to the server
+        const response = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email,
+                otp,
+                newPassword
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Password reset failed');
+        }
+        
+        alert("Your password has been reset successfully. You can now login with your new password.");
+        closeModal("passwordResetModal");
+        showLogin();
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Remove loading state
+        resetButton.disabled = false;
+        resetButton.querySelector("span").textContent = originalText;
+    }
+}
+
+async function handleResendResetOTP(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById("resetEmail").value;
+    
+    if (!email) {
+        alert("Email address is missing. Please try again.");
+        return;
+    }
+    
+    // Add loading state to the resend link
+    const resendLink = document.getElementById("resendResetOtpLink");
+    const originalText = resendLink.textContent;
+    resendLink.textContent = "Sending...";
+    resendLink.style.pointerEvents = "none";
+    
+    try {
+        // Send forgot password request again to resend OTP
+        const response = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to resend reset code');
+        }
+        
+        alert("A new password reset code has been sent to your email.");
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        // Reset the link
+        resendLink.textContent = originalText;
+        resendLink.style.pointerEvents = "auto";
+    }
+}
+
+function showMainContent() {
+    document.body.setAttribute("data-page", "home");
+    
+    // Add null check for main-navbar
+    const mainNavbar = document.getElementById("main-navbar");
+    if (mainNavbar) mainNavbar.style.display = "flex"; // Show main navbar
+
+    const sections = ["home", "features", "about", "contact"];
+    sections.forEach(id => {
+        const section = document.getElementById(id);
+        if (section) section.style.display = "block";
+    });
+
+    const dashboards = ["userDashboard", "adminDashboard"];
+    dashboards.forEach(id => {
+        const dashboard = document.getElementById(id);
+        if (dashboard) dashboard.style.display = "none";
+    });
 }
 
 function showDashboard() {
+    console.log("showDashboard called, isAdmin:", isAdmin, currentUser);
+    console.log("Attempting to show dashboard");
     try {
         // Hide all main sections
-        const hero = document.querySelector(".hero")
-        const features = document.querySelector(".features")
-        const about = document.querySelector(".about")
-        const contact = document.querySelector(".contact")
-        const navbar = document.querySelector(".navbar")
+        document.body.setAttribute("data-page", "dashboard");
+        
+        // Hide main navbar
+        const mainNavbar = document.getElementById("main-navbar");
+        if (mainNavbar) mainNavbar.style.display = "none"; // Hide main navbar
 
-        if (hero) hero.style.display = "none"
-        if (features) features.style.display = "none"
-        if (about) about.style.display = "none"
-        if (contact) contact.style.display = "none"
-        if (navbar) navbar.style.display = "none"
+        const sections = ["home", "features", "about", "contact"];
+        sections.forEach(id => {
+            const section = document.getElementById(id);
+            if (section) section.style.display = "none";
+        });
 
         if (isAdmin) {
             const adminDashboard = document.getElementById("adminDashboard")
             const userDashboard = document.getElementById("userDashboard")
-            
+
             if (adminDashboard) adminDashboard.style.display = "flex"
             if (userDashboard) userDashboard.style.display = "none"
             loadAdminDashboard()
             updateNotificationBadge()
+            // Set initial active tab for admin
+            showTab('admin-overview', 'admin', null);
         } else {
             const userDashboard = document.getElementById("userDashboard")
             const adminDashboard = document.getElementById("adminDashboard")
             const userName = document.getElementById("userName")
-            
+
             if (userDashboard) userDashboard.style.display = "flex"
             if (adminDashboard) adminDashboard.style.display = "none"
             if (userName && currentUser) userName.textContent = currentUser.name
             loadUserDashboard()
+            updateNotificationBadge()
+            loadRecentNotifications()
+            // Set initial active tab for user
+            showTab('overview', 'user', null);
         }
     } catch (error) {
         console.error("Error showing dashboard:", error)
@@ -326,7 +1102,8 @@ function showDashboard() {
 }
 
 // Tab functions
-function showTab(tabName) {
+function showTab(tabName, userType, event) {
+    console.log(`showTab called with tabName: ${tabName}, userType: ${userType}, event:`, event);
     // Hide all tab contents
     const tabContents = document.querySelectorAll(".tab-content")
     tabContents.forEach((tab) => tab.classList.remove("active"))
@@ -336,10 +1113,34 @@ function showTab(tabName) {
     navItems.forEach((item) => item.classList.remove("active"))
 
     // Show selected tab
-    document.getElementById(tabName).classList.add("active")
+    const tabElement = document.getElementById(tabName);
+    if (tabElement) {
+        tabElement.classList.add("active");
+    } else {
+        console.error(`Tab element with ID '${tabName}' not found`);
+        return;
+    }
 
-    // Add active class to clicked nav item
-    event.target.classList.add("active")
+    // Set active class to the clicked nav item if event is provided
+    if (event) {
+        const clickedNavItem = event.target.closest('.nav-item');
+        if (clickedNavItem) {
+            clickedNavItem.classList.add("active");
+        }
+    } else {
+        // If no event (called programmatically), find and activate the corresponding nav item
+        const navItem = document.querySelector(`.nav-item[onclick*="showTab('${tabName}')"]`);
+        if (navItem) {
+            navItem.classList.add("active");
+        }
+    }
+
+    // Update breadcrumb title
+    const pageTitleElement = userType === 'admin' ? document.getElementById("adminPageTitle") : document.getElementById("currentPageTitle");
+    if (pageTitleElement) {
+        // Capitalize first letter and replace hyphens with spaces for display
+        pageTitleElement.textContent = tabName.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
 
     // Load specific tab data
     if (tabName === "lost-found-user") {
@@ -355,14 +1156,24 @@ function showTab(tabName) {
     } else if (tabName === "content-management") {
         loadContentManagement()
     }
+
+    // Close sidebar on mobile after selecting a tab
+    if (window.innerWidth <= 1024) { // Adjust breakpoint as per your CSS
+        const sidebar = document.querySelector(".dashboard-sidebar");
+        if (sidebar) {
+            sidebar.classList.remove("active");
+        }
+    }
 }
 
 // User Dashboard functions
 function loadUserDashboard() {
     updateUserStats()
+
     loadLostFoundItems()
     loadMarketplaceItems()
     loadNotes()
+    loadRecentNotifications()
 }
 
 function updateUserStats() {
@@ -417,6 +1228,7 @@ function handlePostLostItem(e) {
     closeModal("postLostItemModal")
     document.getElementById("postLostItemForm").reset()
     updateUserStats()
+    loadLostFoundItems();
 }
 
 function loadLostFoundItems() {
@@ -584,6 +1396,7 @@ function handleUploadNotes(e) {
     closeModal("uploadNotesModal")
     document.getElementById("uploadNotesForm").reset()
     updateUserStats()
+    loadNotes();
 }
 
 function loadNotes() {
@@ -847,52 +1660,189 @@ function deleteItem(itemId, type) {
 
 // Notification functions
 function addNotification(message, type, itemId = null) {
-    const notifications = JSON.parse(localStorage.getItem("notifications"))
-    const notification = {
-        id: Date.now(),
-        message,
-        type,
-        itemId,
-        timestamp: new Date().toISOString(),
-        read: false,
-    }
-
-    notifications.unshift(notification)
-
-    // Keep only last 50 notifications
-    if (notifications.length > 50) {
-        notifications.splice(50)
-    }
-
-    localStorage.setItem("notifications", JSON.stringify(notifications))
-    updateNotificationBadge()
+    // Only create notifications if user is logged in
+    if (!currentUser) return;
+    
+    // Create notification via API
+    fetch('/api/notifications', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+            message,
+            type
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Notification created:', data);
+        updateNotificationBadge();
+    })
+    .catch(error => {
+        console.error('Error creating notification:', error);
+    });
 }
 
 function updateNotificationBadge() {
-    if (!isAdmin) return
-
-    const notifications = JSON.parse(localStorage.getItem("notifications"))
-    const unreadCount = notifications.filter((n) => !n.read).length
-
-    const notificationDot = document.getElementById("adminNotificationDot")
-    if (unreadCount > 0) {
-        notificationDot.style.display = "block"
-    } else {
-        notificationDot.style.display = "none"
-    }
+    if (!currentUser) return
+    
+    // Fetch unread notifications count from API
+    fetch('/api/notifications/unread', {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const unreadCount = data.length;
+        
+        const notificationDot = document.getElementById("adminNotificationDot")
+        if (notificationDot) {
+            if (unreadCount > 0) {
+                notificationDot.style.display = "block"
+            } else {
+                notificationDot.style.display = "none"
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching notifications:', error);
+    });
 }
 
 function showNotifications() {
-    const notifications = JSON.parse(localStorage.getItem("notifications"))
+    if (!currentUser) return;
+    
     const modal = document.getElementById("notificationModal")
     const list = document.getElementById("notificationList")
+    
+    list.innerHTML = "<p class='text-center'>Loading notifications...</p>"
+    modal.style.display = "block"
+    
+    // Fetch notifications from API
+    fetch('/api/notifications', {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(notifications => {
+        list.innerHTML = ""
+        
+        if (notifications.length === 0) {
+            list.innerHTML = "<p class='text-center'>No notifications</p>"
+        } else {
+            notifications.forEach((notification) => {
+                const item = document.createElement("div")
+                item.className = `activity-item ${!notification.read ? "unread" : ""}`
+                
+                // Create the notification content
+                const content = document.createElement("div")
+                content.className = "notification-content d-flex"
+                content.innerHTML = `
+                    <div class="activity-icon">
+                        <i class="fas fa-${getNotificationIcon(notification.type)}"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">${notification.message}</div>
+                        <div class="activity-time">${formatTimeAgo(new Date(notification.createdAt))}</div>
+                    </div>
+                `
+                
+                // Add a mark as read button for unread notifications
+                if (!notification.read) {
+                    const markReadBtn = document.createElement("button")
+                    markReadBtn.className = "btn btn-sm btn-outline-primary ml-auto"
+                    markReadBtn.innerHTML = '<i class="fas fa-check"></i>'
+                    markReadBtn.title = "Mark as read"
+                    markReadBtn.addEventListener("click", (e) => {
+                        e.stopPropagation() // Prevent event bubbling
+                        markNotificationAsRead(notification._id)
+                    })
+                    content.appendChild(markReadBtn)
+                }
+                
+                item.appendChild(content)
+                list.appendChild(item)
+            })
+            
+            // Add a button to mark all as read if there are unread notifications
+            if (notifications.some(n => !n.read)) {
+                const markAllBtn = document.createElement("button")
+                markAllBtn.className = "btn btn-primary w-100 mt-3"
+                markAllBtn.textContent = "Mark all as read"
+                markAllBtn.addEventListener("click", markAllNotificationsAsRead)
+                list.appendChild(markAllBtn)
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching notifications:', error);
+        list.innerHTML = "<p class='text-center text-danger'>Error loading notifications</p>"
+    });
+}
 
-    list.innerHTML = ""
+function markNotificationAsRead(notificationId) {
+    fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Marked notification as read:', data);
+        updateNotificationBadge();
+        showNotifications(); // Refresh the notifications list
+    })
+    .catch(error => {
+        console.error('Error marking notification as read:', error);
+    });
+}
 
-    if (notifications.length === 0) {
-        list.innerHTML = "<p class='text-center'>No notifications</p>"
-    } else {
-        notifications.slice(0, 10).forEach((notification) => {
+function markAllNotificationsAsRead() {
+    fetch('/api/notifications/read-all', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Marked all notifications as read:', data);
+        updateNotificationBadge();
+        showNotifications(); // Refresh the notifications list
+    })
+    .catch(error => {
+        console.error('Error marking notifications as read:', error);
+    });
+}
+
+function loadRecentNotifications() {
+    if (!currentUser) return;
+    
+    const container = document.getElementById("recentNotifications")
+    container.innerHTML = "<p class='text-center'>Loading...</p>"
+    
+    // Fetch notifications from API
+    fetch('/api/notifications', {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(notifications => {
+        container.innerHTML = ""
+        
+        if (notifications.length === 0) {
+            container.innerHTML = "<p class='text-center'>No recent activity</p>"
+            return
+        }
+        
+        // Display only the 5 most recent notifications
+        notifications.slice(0, 5).forEach((notification) => {
             const item = document.createElement("div")
             item.className = `activity-item ${!notification.read ? "unread" : ""}`
             item.innerHTML = `
@@ -901,46 +1851,16 @@ function showNotifications() {
                 </div>
                 <div class="activity-content">
                     <div class="activity-title">${notification.message}</div>
-                    <div class="activity-time">${formatTimeAgo(notification.timestamp)}</div>
+                    <div class="activity-time">${formatTimeAgo(new Date(notification.createdAt))}</div>
                 </div>
             `
-            list.appendChild(item)
+            container.appendChild(item)
         })
-    }
-
-    // Mark all as read
-    notifications.forEach((n) => (n.read = true))
-    localStorage.setItem("notifications", JSON.stringify(notifications))
-    updateNotificationBadge()
-
-    modal.style.display = "block"
-}
-
-function loadRecentNotifications() {
-    const notifications = JSON.parse(localStorage.getItem("notifications"))
-    const container = document.getElementById("recentNotifications")
-
-    container.innerHTML = ""
-
-    if (notifications.length === 0) {
-        container.innerHTML = "<p class='text-center'>No recent activity</p>"
-        return
-    }
-
-    notifications.slice(0, 5).forEach((notification) => {
-        const item = document.createElement("div")
-        item.className = "activity-item"
-        item.innerHTML = `
-            <div class="activity-icon">
-                <i class="fas fa-${getNotificationIcon(notification.type)}"></i>
-            </div>
-            <div class="activity-content">
-                <div class="activity-title">${notification.message}</div>
-                <div class="activity-time">${formatTimeAgo(notification.timestamp)}</div>
-            </div>
-        `
-        container.appendChild(item)
     })
+    .catch(error => {
+        console.error('Error fetching recent notifications:', error);
+        container.innerHTML = "<p class='text-center text-danger'>Error loading notifications</p>"
+    });
 }
 
 function getNotificationIcon(type) {
@@ -953,6 +1873,8 @@ function getNotificationIcon(type) {
             return "user"
         case "approval":
             return "check-circle"
+        case "rejection":
+            return "times-circle"
         case "system":
             return "cog"
         default:
@@ -1286,19 +2208,31 @@ document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
 
 // Add loading states to buttons
 function addLoadingState(button) {
-    const originalText = button.innerHTML
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...'
-    button.disabled = true
+    if (!button) return;
+    button.setAttribute('data-original-html', button.innerHTML);
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+    button.disabled = true;
+    button.classList.add('loading');
+}
 
-    setTimeout(() => {
-        button.innerHTML = originalText
-        button.disabled = false
-    }, 1000)
+function removeLoadingState(button, originalText) {
+    if (!button) return;
+    button.innerHTML = button.getAttribute('data-original-html') || originalText;
+    button.disabled = false;
+    button.classList.remove('loading');
+    button.removeAttribute('data-original-html');
 }
 
 // Add click handlers for buttons that need loading states
 document.addEventListener("click", (e) => {
-    if (e.target.matches(".btn-primary") && e.target.type === "submit") {
-        addLoadingState(e.target)
+    if (e.target.matches(".btn-primary[type='submit']") && !e.target.classList.contains('loading')) {
+    }
+    
+    // Handle sidebar toggle
+    if (e.target.matches(".sidebar-toggle") || e.target.closest(".sidebar-toggle")) {
+        const sidebar = document.querySelector(".dashboard-sidebar");
+        if (sidebar) {
+            sidebar.classList.toggle("active");
+        }
     }
 })

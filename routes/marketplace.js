@@ -1,29 +1,46 @@
 // routes/marketplace.js
 const express = require('express');
 const router = express.Router();
-const Item = require('../models/Item');
+const multer = require('multer');
+const path = require('path');
+const auth = require('../middleware/auth');
+const { postItem, getApprovedItems, getUserItems, getPendingItems } = require('../controllers/marketplaceController');
 
-
-// Post an item to sell
-router.post('/sell', async (req, res) => {
-    const { title, description, price, seller } = req.body;
-    try {
-        const item = new Item({ title, description, price, seller });
-        await item.save();
-        res.status(201).json({ message: "Item listed for sale", item });
-    } catch (error) {
-        res.status(500).json({ error: "Could not list item" });
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: function(req, file, cb) {
+        cb(null, 'uploads/marketplace/');
+    },
+    filename: function(req, file, cb) {
+        cb(null, `${Date.now()}-${file.originalname}`);
     }
 });
 
-// Get all items for sale
-router.get('/items', async (req, res) => {
-    try {
-        const items = await Item.find();
-        res.status(200).json(items);
-    } catch (error) {
-        res.status(500).json({ error: "Could not fetch items" });
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: function(req, file, cb) {
+        const filetypes = /jpeg|jpg|png|gif/;
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = filetypes.test(file.mimetype);
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed!'));
+        }
     }
 });
+
+// Post an item to sell (requires authentication)
+router.post('/sell', auth, upload.single('image'), postItem);
+
+// Get all approved items for sale
+router.get('/items', getApprovedItems);
+
+// Get user's own items (requires authentication)
+router.get('/my-items', auth, getUserItems);
+
+// Get pending items (admin only)
+router.get('/pending', auth, getPendingItems);
 
 module.exports = router;

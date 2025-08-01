@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const path = require('path');
@@ -21,12 +22,19 @@ mongoose.connect(MONGO_URI)
 
 // Middleware
 app.use(express.static('public'));
-app.use(cors());
+app.use(cors(
+    {
+        origin: "http://localhost:3001", // Allow all origins
+        credentials: true, // Allow credentials
+    }
+));
 app.use(express.json());
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
+app.use('/api/user', require('./routes/user'));
+app.use('/api/items', require('./routes/items'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/lostfound', require('./routes/lostfound'));
 app.use('/api/marketplace', require('./routes/marketplace'));
 app.use('/api/notes', require('./routes/notes'));
@@ -34,7 +42,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/uploads', express.static('uploads'));
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 app.get('/', (req, res) => {
     res.send('🎉 API is running successfully!');
 });
