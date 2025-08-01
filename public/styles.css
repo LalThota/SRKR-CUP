@@ -132,7 +132,9 @@
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--gray-200);
   }
-  
+  .brand-text{
+text-align:left;
+}
   .nav-container {
     max-width: 1200px;
     margin: 0 auto;
